@@ -1,0 +1,44 @@
+---
+title: "6260 Project"
+author: "Emily Wu"
+date: "2026-04-15"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(knitr)
+```
+
+```{r, pathway 2 EDA}
+#load("37692-0002-Data.rda")
+data<-da37692.0002
+#1185-1191 for Disorders
+
+v_range <- function(start, end) {
+  sprintf("V%04d", as.numeric(start):as.numeric(end))}
+MHD<-v_range("1185", "1191")
+
+sblist <- data %>%
+  select(all_of(MHD))
+sblist<-sblist%>%
+  mutate(across(all_of(MHD), ~ as.numeric(gsub(".*\\((-?\\d+)\\).*", "\\1", as.character(.x)))))
+sblist
+
+
+
+sblist <- sblist %>%
+  rename("Bipolar" = V1185)%>%
+  rename("Depression" = V1186)%>%
+  rename("Schizophrenia" = V1187)%>%
+  rename("PTSD" = V1188)%>%
+  rename("Anxiety" = V1189)%>%
+  rename("Personality Disorder" = V1190)%>%
+  rename("Other Diagnosis" = V1191)
+tables_df <- apply(MARGIN = 2, sblist, FUN = table)
+vect<-tables_df[3,]/nrow(data)
+tables_df<-rbind(tables_df, vect)
+
+```
+
