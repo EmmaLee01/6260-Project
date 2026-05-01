@@ -42,3 +42,48 @@ tables_df<-rbind(tables_df, vect)
 
 ```
 
+
+```{r, pathway 3 eda}
+#proposed variables
+varlist<-c("V0411", "V0413","V0414","V0415","V0935", "V0944", "V0945", "V0982", "V1166", "V1165", "V1167", "V1168", "V1264", "V1252")
+varlist<- c(varlist, v_range("1170", "1174"))
+
+sblist<- data%>%
+  select(all_of(varlist))
+
+
+
+sblist <- sblist %>%
+  rename("Years of Education" = V0935) %>%
+  rename("Total Max Sentence" = V0411) %>%
+  rename("Max Sentence # of Years" = V0413) %>%
+  rename("Max Sentence # of Months" = V0414) %>%
+  rename("Max Sentence # of Days" = V0415) %>%
+  rename("SpEd" = V0944) %>%
+  rename("Born in the US" = V0945) %>%
+  rename("Children" = V0982)%>%
+  rename("Foster Home" = V1166)%>%
+  rename("Homeless" = V1165)%>%
+  rename("Specify Home or Institution" = V1167)%>%
+  rename("Lived with most time" = V1168) %>%
+  rename("Welfare" = V1170) %>%
+  rename("Public Housing" = V1171) %>%
+  rename("Father" = V1172) %>%
+  rename("Mother" = V1173) %>%
+  rename("Sibling" = V1174) 
+  
+
+ .
+
+  
+  
+  
+  
+  
+  
+
+
+
+
+```
+
