@@ -13,7 +13,7 @@ library(ggplot2)
 ```
 
 ```{r, pathway 2 EDA}
-#load("37692-0002-Data.rda")
+load("37692-0002-Data.rda")
 data<-da37692.0002
 #1185-1191 for Disorders
 
@@ -143,8 +143,48 @@ ggplot(sblist2, aes(x = `Years of Education`, y = log1p(Tot_time))) +
 ```
 
 ```{r}
-okihmm
+sblist2[sblist2$SpEd<0,] #20 observations missing for those who were SpEd or not
+
+ggplot(sblist2, aes(x = SpEd, y = log1p(Tot_time))) +
+  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(
+    x = "Special Education",
+    y = "log(1 + Total Time in Prison)",
+    title = "Special Education Status and Total Time in Prison"
+  ) +
+  theme_minimal()
+
 ```
+
+```{r}
+sblist2[sblist2$`Born in the US`<0,] #11 observations missing for those who were born in the US or not
+
+ggplot(sblist2, aes(x = `Born in the US`, y = log1p(Tot_time))) +
+  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
+  labs(
+    x = "Special Education",
+    y = "log(1 + Total Time in Prison)",
+    title = "Born in the US and Total Time in Prison"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+sblist2[sblist2$Children<0,] #19 observations missing for those who were born in the US or not
+
+ggplot(sblist2, aes(x = Children, y = log1p(Tot_time))) +
+  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(
+    x = "Special Education",
+    y = "log(1 + Total Time in Prison)",
+    title = "Born in the US and Total Time in Prison"
+  ) +
+  theme_minimal()
+```
+
+
 
 
 
