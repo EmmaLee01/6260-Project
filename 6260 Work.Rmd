@@ -1,8 +1,9 @@
 ---
-title: "6260 Project"
-author: "Emily Wu"
+title: "6260 Final Project Report"
+author: "Emily Wu and Cameron Barlow"
 date: "2026-04-15"
-output: pdf_document
+output: 
+  pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -11,8 +12,44 @@ library(dplyr)
 library(knitr)
 library(ggplot2)
 ```
+\begin{titlepage}
+    \centering
+    \vspace*{5cm}
+    {\huge\bfseries 6260 Final Project Report \par}
+    \vspace{1.5cm}
+    {\Large Emily Wu and Cameron Barlow \par}
+    \vfill
+    {\large 30 April 2026 \par}
+\end{titlepage}
 
-```{r, pathway 2 EDA}
+\newpage
+
+
+
+# Motivation
+Is there a relationship between early life socioeconomic characteristics and family background that can predict the severity of an adult’s criminal history?
+We could create the response of criminal history using an ordinal scale to predict the severity part of criminal history using a cumulative logit model.
+
+
+
+
+# Data 
+[Talk about sampling]
+[Talk about how much data we have available]
+
+
+The response variable was created through the synthesis of maximum sentence and crime type to model severity
+The time variable is highly continuous and skewed in raw form, but much more regular after log transformation, so if ordinal categories are used, they should be created deliberately for interpretability or modeling convenience.
+
+
+
+\newpage
+
+
+
+
+
+```{r, pathway 2 EDA, include=FALSE}
 load("37692-0002-Data.rda")
 data<-da37692.0002
 #1185-1191 for Disorders
@@ -25,7 +62,6 @@ sblist <- data %>%
   select(all_of(MHD))
 sblist<-sblist%>%
   mutate(across(all_of(MHD), ~ as.numeric(gsub(".*\\((-?\\d+)\\).*", "\\1", as.character(.x)))))
-sblist
 
 
 
@@ -46,7 +82,7 @@ tables_df<-rbind(tables_df, vect)
 
 ```{r, pathway 3 eda}
 #proposed variables
-varlist<-c("V0411", "V0413","V0414","V0415","V0935", "V0944", "V0945", "V0982", "V1166", "V1165", "V1167", "V1168", "V1264", "V1252")
+varlist<-c("V0062","V0411", "V0413","V0414","V0415","V0935", "V0944", "V0945", "V0982", "V1166", "V1165", "V1167", "V1168", "V1264", "V1252")
 varlist<- c(varlist, v_range("1170", "1174"))
 
 sblist<- data%>%
@@ -55,6 +91,7 @@ sblist<- data%>%
 
 
 sblist <- sblist %>%
+  rename(offense_num = V0062) %>%
   rename("Years of Education" = V0935) %>%
   rename("Total Max Sentence" = V0411) %>%
   rename("Max Sentence # of Years" = V0413) %>%
@@ -74,19 +111,74 @@ sblist <- sblist %>%
   rename("Sibling" = V1174) 
 sblist <- sblist %>%
   mutate(across(everything(), ~ as.numeric(gsub(".*\\((-?\\d+)\\).*", "\\1", as.character(.x))))) #refer to codebook if needed
-  
-sblist$Tot_time <- (sblist$`Max Sentence # of Years`*365 + sblist$`Max Sentence # of Months`*30+  sblist$`Max Sentence # of Days`)/30
+
+sblist$Tot_time <- (sblist$`Max Sentence # of Years`*365 + sblist$`Max Sentence # of Months`*30+  sblist$`Max Sentence # of Days`)/30.44
+
+
+sblist <- sblist %>%
+  mutate(TimeScore = case_when(
+    Tot_time < 12 ~ 1,
+    Tot_time > 12 & Tot_time < 36 ~ 2,
+    Tot_time > 36 & Tot_time < 84 ~ 3,
+    Tot_time > 84 & Tot_time < 180 ~ 4,
+    Tot_time > 180 & Tot_time < 360 ~ 4,
+    Tot_time >= 360 ~ 5
+  ))
+
+
+
+#scoring - 1: Less than a year
+
+
+sblist <- sblist %>%
+  mutate(edu_group = case_when(
+    `Years of Education` < 12 ~ "< HS",
+    `Years of Education` == 12 ~ "HS/GED",
+    `Years of Education` > 12 & `Years of Education` < 16 ~ "Some college",
+    `Years of Education` >= 16 ~ "College+"
+  ))
+sblist <- sblist %>%
+  mutate(offense_type = case_when(
+    offense_num == 1 ~ "Violent",
+    offense_num == 2 ~ "Property",
+    offense_num == 3 ~ "Drug",
+    offense_num == 4 ~ "Public Order",
+    offense_num == 5 ~ "Other",
+    TRUE ~ "Unknown"
+  ))
+sblist <- sblist %>%
+  mutate(CrimeScore = case_when(
+    offense_type == "Violent" ~ 5,
+    offense_type == "Property" ~ 4,
+    offense_type == "Drug" ~ 3,
+    offense_type == "Public Order" ~ 2,
+    offense_type == "Other" ~ 1
+  ))
+sblist$TotalScore<- sblist$TimeScore+sblist$CrimeScore
+
+
 
 sblist2<-sblist[!is.na(sblist$Tot_time),] #only where data is available
 
 
 #heavily right skewed
 
-ggplot(sblist, aes(x = Tot_time)) +
+ggplot(sblist, aes(x = log1p(Tot_time))) +
   geom_histogram(fill = "steelblue", color = "white") +
   labs(title = "Distribution of Total Time")
 
 ggplot(sblist, aes(x = Tot_time)) +
+  geom_histogram(bins = 100, fill = "steelblue", color = "white") +
+  scale_x_log10() +  
+  labs(title = "Log-Scaled Distribution of Total Time (Months)",
+       x = "Total time (Log Scale)", 
+       y = "Frequency")
+
+ggplot(sblist, aes(x = TotalScore)) +
+  geom_histogram(fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Total Time")
+
+ggplot(sblist, aes(x = TotalScore)) +
   geom_histogram(bins = 100, fill = "steelblue", color = "white") +
   scale_x_log10() +  
   labs(title = "Log-Scaled Distribution of Total Time (Months)",
@@ -103,14 +195,6 @@ ggplot(sblist2, aes(x = as.factor(`Years of Education`), y = Tot_time, fill = as
 
 
 
-
-sblist <- sblist %>%
-  mutate(edu_group = case_when(
-    `Years of Education` < 12 ~ "< HS",
-    `Years of Education` == 12 ~ "HS/GED",
-    `Years of Education` > 12 & `Years of Education` < 16 ~ "Some college",
-    `Years of Education` >= 16 ~ "College+"
-  ))
 
 #scatterplot with log-transformed prison time
 ggplot(sblist2, aes(x = edu_group, y = log1p(Tot_time))) +
