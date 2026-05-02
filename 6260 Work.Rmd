@@ -9,6 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(knitr)
+library(ggplot2)
 ```
 
 ```{r, pathway 2 EDA}
@@ -71,19 +72,79 @@ sblist <- sblist %>%
   rename("Father" = V1172) %>%
   rename("Mother" = V1173) %>%
   rename("Sibling" = V1174) 
+sblist <- sblist %>%
+  mutate(across(everything(), ~ as.numeric(gsub(".*\\((-?\\d+)\\).*", "\\1", as.character(.x))))) #refer to codebook if needed
   
+sblist$Tot_time <- (sblist$`Max Sentence # of Years`*365 + sblist$`Max Sentence # of Months`*30+  sblist$`Max Sentence # of Days`)/30
 
- .
-
-  
-  
-  
-  
-  
-  
+sblist2<-sblist[!is.na(sblist$Tot_time),] #only where data is available
 
 
+#heavily right skewed
 
+ggplot(sblist, aes(x = Tot_time)) +
+  geom_histogram(fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Total Time")
 
+ggplot(sblist, aes(x = Tot_time)) +
+  geom_histogram(bins = 100, fill = "steelblue", color = "white") +
+  scale_x_log10() +  
+  labs(title = "Log-Scaled Distribution of Total Time (Months)",
+       x = "Total time (Log Scale)", 
+       y = "Frequency")
 ```
+
+
+# Education Eda/sh
+```{r}
+ggplot(sblist2, aes(x = as.factor(`Years of Education`), y = Tot_time, fill = as.factor(`Years of Education`))) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) + 
+  theme_minimal() 
+
+
+
+
+sblist <- sblist %>%
+  mutate(edu_group = case_when(
+    `Years of Education` < 12 ~ "< HS",
+    `Years of Education` == 12 ~ "HS/GED",
+    `Years of Education` > 12 & `Years of Education` < 16 ~ "Some college",
+    `Years of Education` >= 16 ~ "College+"
+  ))
+
+#scatterplot with log-transformed prison time
+ggplot(sblist2, aes(x = edu_group, y = log1p(Tot_time))) +
+  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(
+    x = "Years of Education",
+    y = "log(1 + Total Time in Prison)",
+    title = "Education and Total Time in Prison"
+  ) +
+  theme_minimal()
+
+ggplot(sblist, aes(x = edu_group, y = log1p(Tot_time))) +
+  geom_boxplot() +
+  labs(
+    x = "Education Group",
+    y = "log(1 + Total Time in Prison)",
+    title = "Prison Time by Education Group"
+  ) +
+  theme_minimal()
+
+ggplot(sblist2, aes(x = `Years of Education`, y = log1p(Tot_time))) +
+  geom_point(alpha = 0.5) +
+  labs(
+    x = "Years of Education",
+    y = "Total Time in Prison",
+    title = "Years of Education vs Total Time in Prison"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+okihmm
+```
+
+
 
