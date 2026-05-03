@@ -8,9 +8,16 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
 library(dplyr)
 library(knitr)
 library(ggplot2)
+library(MASS)
+library(brant)
+library(splines)
+library(ggeffects)
+library(car)
+library(corrplot)
 ```
 \begin{titlepage}
     \centering
@@ -82,11 +89,11 @@ tables_df<-rbind(tables_df, vect)
 
 ```{r, pathway 3 eda}
 #proposed variables
-varlist<-c("V0062","V0411", "V0413","V0414","V0415","V0935", "V0944", "V0945", "V0982", "V1166", "V1165", "V1167", "V1168", "V1264", "V1252")
+varlist<-c("V0062","V0411", "V0413","V0414","V0415","V0935", "V0944", "V0945", "V0982", "V1166", "V1165", "V1168", "V1264", "V1252")
 varlist<- c(varlist, v_range("1170", "1174"))
 
 sblist<- data%>%
-  select(all_of(varlist))
+  dplyr::select(all_of(varlist))
 
 
 
@@ -102,13 +109,18 @@ sblist <- sblist %>%
   rename("Children" = V0982)%>%
   rename("Foster Home" = V1166)%>%
   rename("Homeless" = V1165)%>%
-  rename("Specify Home or Institution" = V1167)%>%
   rename("Lived with most time" = V1168) %>%
   rename("Welfare" = V1170) %>%
   rename("Public Housing" = V1171) %>%
   rename("Father" = V1172) %>%
   rename("Mother" = V1173) %>%
-  rename("Sibling" = V1174) 
+  rename("Sibling" = V1174) %>%
+  rename(SmokeAge = V1252) %>%
+  rename(DrinkAge = V1264)
+library(corrplot)
+
+
+
 sblist <- sblist %>%
   mutate(across(everything(), ~ as.numeric(gsub(".*\\((-?\\d+)\\).*", "\\1", as.character(.x))))) #refer to codebook if needed
 
@@ -158,7 +170,19 @@ sblist$TotalScore<- sblist$TimeScore+sblist$CrimeScore
 
 
 
-sblist2<-sblist[!is.na(sblist$Tot_time),] #only where data is available
+sblist2<-sblist[!is.na(sblist$TotalScore),] #only where data is available
+table(sblist2$TotalScore)
+colSums(is.na(sblist2))
+
+sblist3 <- sblist2 %>%
+  drop_na()
+nrow(sblist3)
+
+
+table(sblist3$TotalScore)
+
+
+
 
 
 #heavily right skewed
@@ -189,42 +213,62 @@ ggplot(sblist, aes(x = TotalScore)) +
 
 # Education Eda/sh
 ```{r}
-ggplot(sblist2, aes(x = as.factor(`Years of Education`), y = Tot_time, fill = as.factor(`Years of Education`))) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.7) + 
-  theme_minimal() 
+#ggplot(sblist2, aes(x = as.factor(`Years of Education`), y = Tot_time, fill = as.factor(`Years of Education`))) +
+#  geom_boxplot(outlier.shape = NA, alpha = 0.7) + 
+#  theme_minimal() 
 
+heatmap_data <- sblist2 %>%
+  filter(!is.na(`Years of Education`), !is.na(TotalScore)) %>%
+  group_by(`Years of Education`, TotalScore) %>%
+  summarize(count = n(), .groups = "drop")
 
-
-
-#scatterplot with log-transformed prison time
-ggplot(sblist2, aes(x = edu_group, y = log1p(Tot_time))) +
-  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
-  geom_smooth(method = "loess", se = TRUE) +
+ggplot(heatmap_data, aes(x = factor(`Years of Education`), y = factor(TotalScore), fill = count)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "magma", direction = -1) + 
   labs(
+    title = "Concentration of Inmate Profiles",
+    subtitle = "Education vs. TotalScore",
     x = "Years of Education",
-    y = "log(1 + Total Time in Prison)",
-    title = "Education and Total Time in Prison"
+    y = "Total Severity Score",
+    fill = "# of Inmates"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank()
+  )
+
+
+sblist2 %>%
+  count(`Years of Education`, offense_type) %>% # Creates a column named 'n'
+  ggplot(aes(x = factor(`Years of Education`), y = factor(offense_type), fill = n)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "magma", direction = -1) + 
+  labs(
+    title = "Concentration of Inmate Profiles",
+    fill = "# of Inmates"
   ) +
   theme_minimal()
 
+
+
 ggplot(sblist, aes(x = edu_group, y = log1p(Tot_time))) +
   geom_boxplot() +
+  stat_summary(
+    fun = median, 
+    geom = "text", 
+    aes(label = after_stat(round(y, 5))),
+    vjust = -0.5,     
+    color = "steelblue"
+  ) +
   labs(
     x = "Education Group",
     y = "log(1 + Total Time in Prison)",
     title = "Prison Time by Education Group"
   ) +
   theme_minimal()
-
-ggplot(sblist2, aes(x = `Years of Education`, y = log1p(Tot_time))) +
-  geom_point(alpha = 0.5) +
-  labs(
-    x = "Years of Education",
-    y = "Total Time in Prison",
-    title = "Years of Education vs Total Time in Prison"
-  ) +
-  theme_minimal()
 ```
+
+
 
 ```{r}
 sblist2[sblist2$SpEd<0,] #20 observations missing for those who were SpEd or not
@@ -266,9 +310,61 @@ ggplot(sblist2, aes(x = Children, y = log1p(Tot_time))) +
     title = "Born in the US and Total Time in Prison"
   ) +
   theme_minimal()
+
+
+ggplot(sblist2, aes(x = as.factor(TotalScore), fill = as.factor(SpEd))) +
+  geom_bar(position = "fill") + 
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_viridis_d(option = "mako", begin = 0.2, end = 0.8) + 
+  labs(title = "Probability of Rule Violations by Controlling Offense Type",
+       x = "Offense Type", 
+       y = "Percentage of Inmates",
+       fill = "Status") +
+  theme_minimal()
+
+sblist2[is.na(sblist2$TotalScore),]
 ```
 
 
+```{r, brant testing}
+tempy<- data.frame(
+  Education = sblist2$`Years of Education`,
+  TotalScore = sblist2$TotalScore,
+  offense_type = sblist2$offense_type,
+  DrinkAge = sblist2$DrinkAge,
+  SmokeAge = sblist2$SmokeAge
+  
+)
+model <- polr(as.factor(TotalScore) ~ Education + DrinkAge + SmokeAge, 
+              data = tempy, 
+              Hess = TRUE)
 
+brant(model)
+```
+
+
+```{r, Multicollinearity Check}
+vif_model <- lm(
+  as.numeric(TotalScore) ~`Years of Education`+ SpEd+ `Born in the US`+ Children+ `Foster Home`+ Homeless+ Welfare+ `Public Housing`+ Father+ Mother+ Sibling+ SmokeAge+ DrinkAge,
+  data = sblist2
+)
+vif(vif_model)
+
+sub_data <- sblist2 %>% dplyr::select(`Years of Education`, SpEd, `Born in the US`, Children, `Foster Home`, Homeless, Welfare, `Public Housing`, Father, Mother, Sibling, SmokeAge, DrinkAge)
+cor_matrix <- cor(sub_data, use = "complete.obs")
+corrplot(cor_matrix, method = "color", addCoef.col = "black")
+
+#> vif_model1 <- lm(
+#+   as.numeric(TotalScore) ~`Foster Home` + Homeless + Welfare + `Public Housing`,
+#+   data = sblist2
+
+#vif_model2 <- lm(
+#  as.numeric(TotalScore) ~ Father + Mother + Sibling,
+#  data = sblist2)
+#vif(vif_model)
+
+
+
+```
 
 
