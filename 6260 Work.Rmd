@@ -132,8 +132,8 @@ sblist <- sblist %>%
     Tot_time > 12 & Tot_time < 36 ~ 2,
     Tot_time > 36 & Tot_time < 84 ~ 3,
     Tot_time > 84 & Tot_time < 180 ~ 4,
-    Tot_time > 180 & Tot_time < 360 ~ 4,
-    Tot_time >= 360 ~ 5
+    Tot_time > 180 & Tot_time < 360 ~ 5,
+    Tot_time >= 360 ~ 6
   ))
 
 
@@ -167,12 +167,15 @@ sblist <- sblist %>%
   ))
 sblist$TotalScore<- sblist$TimeScore+sblist$CrimeScore
 
-sblist <- sblist %>%
-  mutate(across(where(is.numeric), ~ ifelse(. < 0, NA, .)))
+
 
 sblist2<-sblist[!is.na(sblist$TotalScore),] #only where data is available
 table(sblist2$TotalScore)
 colSums(is.na(sblist2))
+
+sblist2 <- sblist2 %>%
+  mutate(across(where(is.numeric), ~ ifelse(. < 0, NA, .)))
+
 
 sblist3 <- sblist2 %>%
   drop_na()
