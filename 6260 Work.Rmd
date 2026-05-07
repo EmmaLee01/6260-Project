@@ -4,6 +4,7 @@ author: "Emily Wu and Cameron Barlow"
 date: "2026-04-15"
 output: 
   pdf_document
+linestretch: 1.5
 ---
 
 ```{r setup, include=FALSE}
@@ -13,11 +14,13 @@ library(dplyr)
 library(knitr)
 library(ggplot2)
 library(MASS)
+library(patchwork)
 library(brant)
 library(splines)
 library(ggeffects)
 library(car)
 library(corrplot)
+library(kableExtra)
 ```
 \begin{titlepage}
     \centering
@@ -33,29 +36,134 @@ library(corrplot)
 
 
 
-# Motivation
-Is there a relationship between early life socioeconomic characteristics and family background that can predict the severity of an adult’s criminal history?
-We could create the response of criminal history using an ordinal scale to predict the severity part of criminal history using a cumulative logit model.
+# Introduction
+Criminal Justice outcomes are often studied as whether contact has occurred, but this can hide many meaningful differences when it comes to seriousness. Individuals may differ not only in whether they have contact but also severity. Due to early life socioeconomic and family conditions affecting adult trajectories, examining severity rather than simply contact may provide a fuller picture of how disadvantage accumulates across life courses. In hopes of gaining a more comprehensive view of trajectory, our study aims to capture the multidimensional nature of upbringing, involving factors such as education, housing instability, and family structure. 
 
+This perspective is supported by prior literature linking criminal justice involvement to broader systems of inequality. Turney and Wakefield (2019) argue that criminal justice contact is a central mechanism through which inequality is produced and maintained, extending beyond incarceration itself into families, schools, neighborhoods, and other institutions. Their work suggests that criminal justice outcomes are concentrated among disadvantaged populations and that early-life disadvantages may shape later justice trajectories. Similarly, Côté-Lussier, Hohl, and David (2020) describe disadvantage and criminal justice as mutually reinforcing: disadvantage can increase criminal justice involvement, while criminal justice involvement can deepen later inequality. Their review is especially useful for this project because it frames criminal justice outcomes as part of a broader cumulative process rather than an isolated event. 
+
+In addition, Slade et al. (2008) provide a more direct life-course example by showing that, among disadvantaged urban young men, earlier onset of substance use disorder is associated with greater adult incarceration and broader criminal justice involvement. Their findings support the broader idea that early risk exposures may matter not only for whether criminal justice contact occurs, but for how serious later justice outcomes become. Taken together, these studies motivate the present project’s focus on early-life disadvantage and adult criminal-history severity. 
+
+In hopes of addressing the need for a more detailed outcome, we design our own variable to more accurately describe severity, which synthesizes time and crime type to have a comprehensive detail of severity. This approach treats severity as an ordinal quantity rather than a continuous one, allowing the analysis to preserve ranking without requiring equal spacing between severity levels. Because of this structure, a cumulative logit model provides a natural framework for assessing how early-life predictors are associated with movement into higher severity categories.
+
+The analysis is intended as a predictive and explanatory study of association, rather than a causal claim.
+The paper proceeds as follows. First, the data source and variable construction are described. Next, the ordinal severity response is developed and justified. Exploratory data analysis is then used to examine the distribution of the response and the candidate predictors, as well as assumptions relevant to ordinal modeling. The cumulative logit framework is then introduced and interpreted. Finally, limitations, future improvements, and policy implications are discussed.
 
 
 
 # Data 
-[Talk about sampling]
-[Talk about how much data we have available]
+The data used in this study is the Survey of Prison Inmates (SPI), United States, 2016 (ICPSR 37692) Data Set for Restricted Use.
+
+In trying to understand an individual's trajectories, efforts should be made to try to look at many facets of upbringing. The Bureau of Justice Statistics (BJS) attempts to do this, with the final dataset containing inmate records, intake forms, surveys, questionnaires, screenings, etc. with a total of 2259 columns. This survey was conducted so that policymakers could address shortcomings of correctional institutions. The sample selection was done with a 2 stage cluster probability sample, where The first stage consisted of a random sample of prisons. The second-stage consisted of a random sample of prisoners held in the selected prisons. 20,000 inmates were chosen to represent about 1.5 million inmates within the prison system. Data was collected using Computer-Assisted Personal Interviewing to assist with human and data entry error with a relatively high response rate (70%).
+
+Many of the variables were suppressed due to privacy reasons and therefore had to be removed because they were unusable. Additionally, all categorical variables had extra descriptions, i.e. “(1) 1 = Yes” as an observation, and therefore must be flattened. Furthermore, many observations were missing for various reasons with codes to specify why, but for our  purposes, we flattened them all to “0” or NA as the reason for missing was not relevant to this project.
+
+Questions regarding personal feelings on past wrongdoings may lead to response biases as inmates may feel they want to lie to “look good.” Inmates were assured that answers were completely anonymous and that their identity was protected, to reduce bias. The final model is comprised of 
+
+```{r, echo = F}
+
+codebook <- data.frame(
+  Variable = c(
+    "Years of Education", 
+    "Children", 
+    "Foster Home", 
+    "Homeless", 
+    "Welfare", 
+    "Father/Mother/Sibling", 
+    "DrinkAge/SmokeAge"
+  ),
+  Description = c(
+    "Years of Education Completed",
+    "Does offender have children",
+    "Was offender part of foster home before 18",
+    "Was offender homeless before 18",
+    "Welfare/public assistance before age 18",
+    "Offender's [relative] ever been sentenced/served time",
+    "Age when first drank alcoholic beverage/started smoking fairly regularly"
+  ),
+  Type = c(
+    "Ordinal (5 Classes)",
+    "Binary (Y/N)",
+    "Binary (Y/N)",
+    "Binary (Y/N)",
+    "Binary (Y/N)",
+    "Binary (Y/N)",
+    "Numeric (Input age)"
+  )
+)
+kable(codebook, 
+      format = "latex",
+      booktabs = TRUE,
+      col.names = c("Variable Name", "Description", "Data Type"),
+      align = c("l", "l", "c")) %>% 
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_position"), 
+                full_width = FALSE, 
+                position = "left") %>%
+  column_spec(1, bold = TRUE)
 
 
-The response variable was created through the synthesis of maximum sentence and crime type to model severity
-The time variable is highly continuous and skewed in raw form, but much more regular after log transformation, so if ordinal categories are used, they should be created deliberately for interpretability or modeling convenience.
+```
+
+The primary response variable in this analysis is adult criminal-history severity, operationalized through a constructed ordinal measure called TotalScore.
+
+This variable was created to move beyond a simple indicator of criminal justice contact and instead capture meaningful differences in the seriousness of inmates’ criminal histories. A binary outcome such as incarcerated versus not incarcerated would not distinguish between individuals with very different offense profiles and sentencing burdens. Because the goal of the project is to study variation in the severity of adult criminal history, a broader outcome measure was needed.
 
 
+
+TotalScore is comprised of 2 individual scores: CrimeScore, which is based on Offense Type, and TimeScore, which is based on max cumulative sentance length. 
+
+\begin{center}
+$TotalScore_i = CrimeScore_i+TimeScore_i$
+\end{center}
+
+Crime type captures the qualitative seriousness of the underlying offense, while sentence length reflects the magnitude of punishment. These components were added together to create an ordered severity score, with higher values representing more severe criminal histories overall.
+
+\begin{center}
+$TotalTime_i = \frac{365(MaxYears_i)+30(MaxMonths_i)+MaxDays_i}{30.44}$
+\end{center}
+
+To construct the time-based component, sentence length was first converted into a common monthly scale
+
+$$
+\mathrm{TimeScore}_i =
+\left\{
+\begin{array}{ll}
+1 & \text{if } \mathrm{Tot\_time}_i < 12 \\
+2 & \text{if } 12 \le \mathrm{Tot\_time}_i < 36 \\
+3 & \text{if } 36 \le \mathrm{Tot\_time}_i < 84 \\
+4 & \text{if } 84 \le \mathrm{Tot\_time}_i < 180 \\
+5 & \text{if } 180 \le \mathrm{Tot\_time}_i < 360 \\
+6 & \text{if } \mathrm{Tot\_time}_i \ge 360
+\end{array}
+\right.
+$$
+The sentence-length categories were defined using substantively meaningful ranges rather than purely data-driven cutoffs. These ranges distinguish short-term sentences from progressively more serious and long-term sentencing exposure, allowing the time component to reflect punishment severity in a way that is more interpretable than raw sentence length alone.
+
+
+Offense type categories were assigned an ordinal CrimeScore, where higher values correspond to more serious crimes within the scoring system 
+
+$$
+\mathrm{CrimeScore}_i =
+\left\{
+\begin{array}{ll}
+5 & \text{if offense tpe is Violent} \\
+4 & \text{if offense tpe is Property} \\
+3 & \text{if offense tpe is Drug} \\
+2 & \text{if offense tpe is Public Order } \\
+1 & \text{if offense tpe is Other} \\
+\end{array}
+\right.
+$$
+
+
+This produces an approximate total sentence duration in months. The variable was then converted into an ordinal TimeScore using substantively meaningful sentencing ranges:
+
+
+The use of a composite response is supported by exploratory analysis. Total time alone was highly right-skewed, indicating that sentence length by itself would be difficult to interpret and overly influenced by a relatively small number of extreme cases. At the same time, offense categories showed meaningful variation, suggesting that type of crime also contributes important information about severity. For this reason, neither offense type nor sentence length alone was considered sufficient. The combined score was intended to better reflect the multidimensional nature of criminal-history severity.
+
+This response should be interpreted as an ordinal severity index, not as a precise continuous measurement. That is, higher values indicate greater criminal-history severity, but the difference between adjacent score levels should not be interpreted as equal in magnitude. Because the measure is researcher-constructed, it is also subject to limitations: the final score depends on coding choices for offense seriousness and sentence-length categories, and alternative scoring schemes could produce somewhat different results. Nevertheless, the composite outcome provides a more substantively meaningful measure of severity than either component in isolation.
 
 \newpage
-
-
-
-
-
+# Exploratory Data Analysis
 ```{r, pathway 2 EDA, include=FALSE}
 load("37692-0002-Data.rda")
 data<-da37692.0002
@@ -66,7 +174,7 @@ v_range <- function(start, end) {
 MHD<-v_range("1185", "1191")
 
 sblist <- data %>%
-  select(all_of(MHD))
+  dplyr::select(all_of(MHD))
 sblist<-sblist%>%
   mutate(across(all_of(MHD), ~ as.numeric(gsub(".*\\((-?\\d+)\\).*", "\\1", as.character(.x)))))
 
@@ -85,9 +193,7 @@ vect<-tables_df[3,]/nrow(data)
 tables_df<-rbind(tables_df, vect)
 
 ```
-
-
-```{r, pathway 3 eda}
+```{r, pathway 3 eda, include=F}
 #proposed variables
 varlist<-c("V0062","V0411", "V0413","V0414","V0415","V0935", "V0944", "V0945", "V0982", "V1166", "V1165", "V1168", "V1264", "V1252")
 varlist<- c(varlist, v_range("1170", "1174"))
@@ -134,7 +240,7 @@ sblist <- sblist %>%
     Tot_time > 84 & Tot_time < 180 ~ 4,
     Tot_time > 180 & Tot_time < 360 ~ 5,
     Tot_time >= 360 ~ 6
-  ))
+  )) 
 
 
 
@@ -187,10 +293,9 @@ table(sblist3$TotalScore)
 
 
 
-
 #heavily right skewed
 
-ggplot(sblist, aes(x = log1p(Tot_time))) +
+ggplot(sblist2, aes(x = log1p(Tot_time))) +
   geom_histogram(fill = "steelblue", color = "white") +
   labs(title = "Distribution of Total Time")
 
@@ -211,7 +316,137 @@ ggplot(sblist, aes(x = TotalScore)) +
   labs(title = "Log-Scaled Distribution of Total Time (Months)",
        x = "Total time (Log Scale)", 
        y = "Frequency")
+
+plot_raw <- sblist %>%
+  count(offense_type) %>%
+  top_n(10, n) %>%
+  ggplot(aes(x = reorder(offense_type, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() + 
+  labs(title = "Raw SPI Offenses", x = "Offense", y = "Count") +
+  theme_minimal()
+#ggsave("plotraw.jpg", plot = plot_raw, width = 8, height = 6)
 ```
+
+We conducted exploratory data analysis to further our understanding of the variables in our data set. Using
+data visualizations of the distribution of variables and correlation matrices allowed us to see the range of
+outcomes for prison inmates. 
+
+```{r, echo=F, message=F, warning=F}
+TP1<-ggplot(sblist2, aes(x = Tot_time)) +
+  geom_histogram(fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Total Time")
+
+TP2<-ggplot(sblist, aes(x = Tot_time)) +
+  geom_histogram(bins = 100, fill = "steelblue", color = "white") +
+  scale_x_log10() +  
+  labs(title = "Log-Scaled Distribution of Total Time (Months)",
+       x = "Total time (Log Scale)", 
+       y = "Frequency")
+
+CP1<-ggplot(sblist2, aes(x=offense_type))+
+  geom_bar(bins = 100, fill = "steelblue", color = "white")
+
+TP1/TP2/CP1
+
+```
+
+The above plots show the distribution of the components of our response variable. The time variable is heavily right skewed. That means a small number of individuals have very long sentences, while most observations are concentrated at lower values. This makes raw sentence length hard to use directly, because a few extreme cases can dominate the scale. When we apply a log transformation, the distribution becomes much more regular, which tells us that time is meaningful, but still only one dimension of severity. At the same time, offense frequencies vary substantially across categories, with violent offenses most common, indicating that qualitative differences in offense seriousness are also important. These patterns support constructing a composite ordinal response variable that combines sentence burden and offense seriousness into a broader measure of severity. 
+
+```{r, echo=F, message=F, warning=F}
+
+heatmap_data <- sblist2 %>%
+  filter(!is.na(`Years of Education`), !is.na(TotalScore)) %>%
+  group_by(`Years of Education`, TotalScore) %>%
+  summarize(count = n(), .groups = "drop")
+
+eduplot<-ggplot(heatmap_data, aes(x = factor(`Years of Education`), y = factor(TotalScore), fill = count)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "magma", direction = -1) + 
+  labs(
+    title = "Concentration of Inmate Profiles",
+    subtitle = "Education vs. TotalScore",
+    x = "Years of Education",
+    y = "Total Severity Score",
+    fill = "# of Inmates"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank()
+  )
+eduplot
+
+```
+The heatmap shows that inmate profiles are most concentrated among individuals with roughly 9–12 years of education and moderate-to-high severity scores. While this indicates where the sample is densest, it does not by itself show a clear monotonic relationship between education and severity, suggesting that additional covariates may be needed to explain variation in criminal-history severity.
+For this reason, years of education was converted into an ordinal categorical variable with five classes. This decision was made for 2 reasons. Substantively, education is often interpreted through milestones such as incomplete schooling, high school completion, and education beyond high school, rather than through the assumption that each additional year has the same effect. Statistically, grouping education reduces sensitivity to sparse counts at very low and very high values and avoids imposing a strictly linear structure when the exploratory plots did not support one clearly.
+
+
+
+```{r, echo=F}
+age_summary <- data.frame(
+  Variable = c("DrinkAge", "SmokeAge"),
+  Missing_n = c(sum(is.na(sblist2$DrinkAge)), sum(is.na(sblist2$SmokeAge))),
+  Missing_pct = c(
+    round(mean(is.na(sblist2$DrinkAge)) * 100, 2),
+    round(mean(is.na(sblist2$SmokeAge)) * 100, 2)
+  ),
+  Mean = c(
+    round(mean(sblist2$DrinkAge, na.rm = TRUE), 2),
+    round(mean(sblist2$SmokeAge, na.rm = TRUE), 2)
+  ),
+  Median = c(
+    median(sblist2$DrinkAge, na.rm = TRUE),
+    median(sblist2$SmokeAge, na.rm = TRUE)
+  ),
+  SD = c(
+    round(sd(sblist2$DrinkAge, na.rm = TRUE), 2),
+    round(sd(sblist2$SmokeAge, na.rm = TRUE), 2)
+  ),
+  Min = c(
+    min(sblist2$DrinkAge, na.rm = TRUE),
+    min(sblist2$SmokeAge, na.rm = TRUE)
+  ),
+  Max = c(
+    max(sblist2$DrinkAge, na.rm = TRUE),
+    max(sblist2$SmokeAge, na.rm = TRUE)
+  )
+)
+
+kable(age_summary,
+      booktabs = TRUE,
+      col.names = c("Variable", "Missing n", "Missing %", "Mean", "Median", "SD", "Min", "Max"),
+      align = c("l", "r", "r", "r", "r", "r", "r", "r"))
+
+
+```
+The age-of-initiation variables suggest that, among nonmissing observations, first alcohol use and first regular smoking generally occurred in the mid-teen years. DrinkAge had a mean of 14.03 years and median of 14, while SmokeAge had a mean of 15.02 years and median of 15, indicating that alcohol initiation occurred slightly earlier on average than smoking initiation. Missingness was higher for SmokeAge (22.71%) than for DrinkAge (7.77%), which may limit comparability across the two predictors.
+
+```{r, Father/Welfare Proportion Charts, echo = FALSE}
+ggplot(sblist2, aes(x = as.factor(TotalScore), fill = as.factor(Father))) +
+  geom_bar(position =  position_fill(reverse = TRUE)) + 
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_viridis_d(option = "mako", begin = 0.2, end = 0.8, direction = -1,
+                       labels = c( "1" = "Yes", "2" = "No")) + 
+  labs(title = "Proportional Bar Chart for Father's Contact with Prison System ",
+       x = "Total Score", 
+       y = "Percentage of Inmates",
+       fill = "Father \nincarcerated") +
+  theme_minimal()
+
+ggplot(sblist2, aes(x = as.factor(TotalScore), fill = as.factor(Welfare))) +
+  geom_bar(position =  position_fill(reverse = TRUE)) + 
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_viridis_d(option = "mako", begin = 0.2, end = 0.8, direction = -1,
+                       labels = c( "1" = "Yes", "2" = "No")) + 
+  labs(title = "Proportional Bar Chart for Welfare Status",
+       x = "Total Score", 
+       y = "Percentage of Inmates",
+       fill = "Welfare") +
+  theme_minimal()
+
+```
+
+
 
 
 # Education Eda/sh
@@ -225,7 +460,7 @@ heatmap_data <- sblist2 %>%
   group_by(`Years of Education`, TotalScore) %>%
   summarize(count = n(), .groups = "drop")
 
-ggplot(heatmap_data, aes(x = factor(`Years of Education`), y = factor(TotalScore), fill = count)) +
+eduplot<-ggplot(heatmap_data, aes(x = factor(`Years of Education`), y = factor(TotalScore), fill = count)) +
   geom_tile() + 
   scale_fill_viridis_c(option = "magma", direction = -1) + 
   labs(
@@ -351,7 +586,30 @@ vif_model <- lm(
   as.numeric(TotalScore) ~`Years of Education`+ SpEd+ `Born in the US`+ Children+ `Foster Home`+ Homeless+ Welfare+ `Public Housing`+ Father+ Mother+ Sibling+ SmokeAge+ DrinkAge,
   data = sblist2
 )
-vif(vif_model)
+vif_df <- vif(vif_model) %>% 
+    as.data.frame() %>% 
+    rename(VIF = 1) %>%           
+    mutate(Variable = row.names(.)) %>% 
+    dplyr::select(Variable, VIF)         
+
+
+vif_df %>%
+    kable(
+        digits = 2, 
+        caption = "Multicollinearity Diagnostics: VIF Values",
+        booktabs = TRUE, 
+        linesep = "",
+        row.names = FALSE
+        
+    ) %>%
+    kable_styling(
+        bootstrap_options = c("striped", "hover", "condensed"),
+        full_width = FALSE,
+        position = "center"
+    ) %>%
+
+    column_spec(2, color = ifelse(vif_df$VIF > 5, "red", "black"), 
+                bold = ifelse(vif_df$VIF > 5, TRUE, FALSE))
 
 sub_data <- sblist2 %>% dplyr::select(`Years of Education`, SpEd, `Born in the US`, Children, `Foster Home`, Homeless, Welfare, `Public Housing`, Father, Mother, Sibling, SmokeAge, DrinkAge)
 cor_matrix <- cor(sub_data, use = "complete.obs")
