@@ -250,6 +250,7 @@ sblist <- sblist %>%
 sblist <- sblist %>%
   mutate(edu_group = case_when(
     `Years of Education` < 12 ~ "< HS",
+    `Years of Education` == 30 ~ "Other",
     `Years of Education` == 12 ~ "HS/GED",
     `Years of Education` > 12 & `Years of Education` < 16 ~ "Some college",
     `Years of Education` >= 16 ~ "College+"
@@ -446,186 +447,109 @@ ggplot(sblist2, aes(x = as.factor(TotalScore), fill = as.factor(Welfare))) +
 
 ```
 
+Proportional bar charts for welfare exposure and father’s contact with the prison system suggest that the composition of these early-life disadvantage measures varies across levels of TotalScore, but neither predictor exhibits a clear monotonic bivariate relationship with criminal-history severity. In both cases, the proportion of “Yes” responses fluctuates across severity categories rather than steadily increasing or decreasing. This suggests that any relationship between these early-life factors and adult criminal-history severity may be modest, nonlinear, or dependent on additional covariates. Additionally, differences at the lowest severity levels should be interpreted with a grain of salt because those categories contain fewer observations (24).
+
+# Analysis Proposal
+
+In that we are working with an ordinal response variable, as described in the setup of this question, we will be using a cumulative logit model to model this response of the total score comprised of sentence time and severity of the crime. The cumulative logit model itself is expressed as
+
+$logit[P(Y\leq j|x)]=\alpha_j+\beta^Tx$ where $logit=\frac{p}{1-p}$
+
+In words, this model calculates the probability that a prisoner falls in a category at or below the one predicted given a set of predictors. From this model, there are some assumptions that arise that must be looked at in order for our results to be valid. For one, as has been discussed, the response must be an ordinal categorical variable in nature. This must be the case because if not, then looking at the probability that a response would fall in some category or less would not make sense as nominal variables, the other type of categorical variables, do not have a specific ordering to them. Thus, using a less than or equal to sign would not make sense for nominal variables, explaining why an ordinal response must be used.
+
+The second and last assumption of this model is the proportional odds assumption. This assumption states that the effect of any predictor on the odds of a response being in or below a certain category is the same regardless of which category is being considered. Even though each cumulative logit has its own intercept ($\alpha_j$), the coefficients ($\beta$) must be the same throughout each category. This assumption is very crucial to ensure relationships do not differ between different categories, as the model states this must be the case.
+
+Furthermore, instead of the logit link, we will consider looking at other link functions to see if these link functions provide better fit to the data. These other link functions that will be tested are the probit and complementary log log function. The probit link function, $\Phi^{-1}$ models the response using a standard normal CDF. The complementary log log link function, $log(-log(1-p))$ is an asymmetric link function, which is different from probit and logit link functions as these are symmetric.
 
 
+# Analysis
 
-# Education Eda/sh
-```{r}
-#ggplot(sblist2, aes(x = as.factor(`Years of Education`), y = Tot_time, fill = as.factor(`Years of Education`))) +
-#  geom_boxplot(outlier.shape = NA, alpha = 0.7) + 
-#  theme_minimal() 
+In implementing the proposed analysis, we used the MASS package in R in order to get the results. As mentioned, we are using the total score variable as the response, and all the variables listed in the table in the data section will be used to model the response. Furthermore, we will use an 80/20 train and test split in order to be able to test the results of our model to further evaluate how the data reacts to the model given. The results from the cumulative logit model can be seen below:
 
-heatmap_data <- sblist2 %>%
-  filter(!is.na(`Years of Education`), !is.na(TotalScore)) %>%
-  group_by(`Years of Education`, TotalScore) %>%
-  summarize(count = n(), .groups = "drop")
+```{r,echo=F}
+library(MASS)
+set.seed(123)
+sblist3$TotalScore <- factor(sblist3$TotalScore, ordered = TRUE)
+sample_size <- floor(0.80 * nrow(sblist3))
+train_indices <- sample(seq_len(nrow(sblist3)), size = sample_size)
+train_data <- sblist3[train_indices, ]
+test_data  <- sblist3[-train_indices, ]
+cum_logit_model <- polr(TotalScore ~ as.factor(edu_group)+as.factor(Children) + 
+                        as.factor(`Foster Home`) + as.factor(Homeless) + 
+                        SmokeAge + DrinkAge + as.factor(Welfare) + as.factor(Mother) +
+                          as.factor(Father), 
+                        data = train_data, Hess = TRUE)
 
-eduplot<-ggplot(heatmap_data, aes(x = factor(`Years of Education`), y = factor(TotalScore), fill = count)) +
-  geom_tile() + 
-  scale_fill_viridis_c(option = "magma", direction = -1) + 
-  labs(
-    title = "Concentration of Inmate Profiles",
-    subtitle = "Education vs. TotalScore",
-    x = "Years of Education",
-    y = "Total Severity Score",
-    fill = "# of Inmates"
-  ) +
-  theme_minimal() +
-  theme(
-    panel.grid = element_blank()
-  )
-
-
-sblist2 %>%
-  count(`Years of Education`, offense_type) %>% # Creates a column named 'n'
-  ggplot(aes(x = factor(`Years of Education`), y = factor(offense_type), fill = n)) +
-  geom_tile() + 
-  scale_fill_viridis_c(option = "magma", direction = -1) + 
-  labs(
-    title = "Concentration of Inmate Profiles",
-    fill = "# of Inmates"
-  ) +
-  theme_minimal()
-
-
-
-ggplot(sblist, aes(x = edu_group, y = log1p(Tot_time))) +
-  geom_boxplot() +
-  stat_summary(
-    fun = median, 
-    geom = "text", 
-    aes(label = after_stat(round(y, 5))),
-    vjust = -0.5,     
-    color = "steelblue"
-  ) +
-  labs(
-    x = "Education Group",
-    y = "log(1 + Total Time in Prison)",
-    title = "Prison Time by Education Group"
-  ) +
-  theme_minimal()
+summary(cum_logit_model)
 ```
 
+To start off, it must be pointed out that categorical factors that are coded in as a two is a no. From these results, it can be seen that level of education obtained, having children or not, and drinking age seem to be the most important predictors given their test statistic values. Even though p-values are not calculated, and we will not do since we are not looking for significance, these results allow us to see which factors influence a person's tendency to commit a more heinous crime given a set of predictors. In talking about the education variable, the base level for this is less than high school. The negative coefficients for every variable here indicates that there is a negative association between level of crime committed and education level obtained, meaning higher education is associated with a less severe crime committed. Next, in looking at the children variable, there can be seen a positive coefficient, indicating that having kids is associated with a less severe crime since having a kid is the baseline. Lastly, in pointing out the drinking age predictor, this has the highest test statistic value in terms of magnitude. Its negative coefficient means that starting to drink alcohol at a younger age is associated with a more severe crime. In the conclusion, we will explain some interesting reasons for why this may be the case. 
 
+In further wanting to assess this model, it is important to check the assumptions to ensure conclusions we draw are not invalid. In order to do this, we will use the nominal test function from the ordinal package. What this function does is it does a likelihood ratio test comparing a model assuming the assumption of proportional odds is met versus a model that assumes the odds change from category to category. The p-values will then indicate whether the more flexible model, the one not assuming the proportional odds assumption, is a better fit or not. Low p-values will suggest this more flexible model is a better fit, thus indicating this assumption may not be met The results from doing this can be seen below : 
 
-```{r}
-sblist2[sblist2$SpEd<0,] #20 observations missing for those who were SpEd or not
-
-ggplot(sblist2, aes(x = SpEd, y = log1p(Tot_time))) +
-  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
-  geom_smooth(method = "loess", se = TRUE) +
-  labs(
-    x = "Special Education",
-    y = "log(1 + Total Time in Prison)",
-    title = "Special Education Status and Total Time in Prison"
-  ) +
-  theme_minimal()
-
+```{r,echo=F,message=F,warning=F}
+library(ordinal)
+train_data <- train_data %>% mutate(FosterHome=`Foster Home`)
+clm_model <- clm(as.factor(TotalScore) ~ edu_group+Children+FosterHome + Homeless + 
+                        SmokeAge + DrinkAge + Welfare + Mother +Father, data = train_data)
+nominal_test(clm_model)
 ```
 
-```{r}
-sblist2[sblist2$`Born in the US`<0,] #11 observations missing for those who were born in the US or not
+From the output, there can be many high p-values seen. This is good as it indicates the assumption of proportional odds is met. It is also important to point out that the education level do not have an associated p-value. This is due to the fact that there is an identifiability issue, as in the class with a response total score of 3, there is nobody with education level of other. This makes it so the maximum likelihood estimate for the education variable cannot be determined, as the model is unable to calculate the odds of moving between categories for a group that has no observations in one of those categories. Since this is the only variable we cannot determine whether the proprtional odds assumption can be met for it, and the rest of the variables have very insignificant p-values, we will assume this assumption is met for our analysis.
 
-ggplot(sblist2, aes(x = `Born in the US`, y = log1p(Tot_time))) +
-  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
-  labs(
-    x = "Special Education",
-    y = "log(1 + Total Time in Prison)",
-    title = "Born in the US and Total Time in Prison"
-  ) +
-  theme_minimal()
+For the next part of our analysis, we would like to look at predictions from our test set to understand how the predictions will look. From this, the confusion matrix can be seen below :
+
+```{r,echo=F}
+test_predictions <- predict(cum_logit_model, newdata = test_data, type = "class")
+conf_matrix <- table(Actual = test_data$TotalScore, Predicted = test_predictions)
+print(conf_matrix)
 ```
 
-```{r}
-sblist2[sblist2$Children<0,] #19 observations missing for those who were born in the US or not
+The confusion matrix shows a majority of 7's, 9's, and 10's predicted, with an overall accuracy of about 21 percent. Reasons for this look to be that our model is just defaulting to some of the highest observed classes.
 
-ggplot(sblist2, aes(x = Children, y = log1p(Tot_time))) +
-  geom_jitter(width = 0.2, height = 0.05, alpha = 0.4) +
-  geom_smooth(method = "loess", se = TRUE) +
-  labs(
-    x = "Special Education",
-    y = "log(1 + Total Time in Prison)",
-    title = "Born in the US and Total Time in Prison"
-  ) +
-  theme_minimal()
-
-
-ggplot(sblist2, aes(x = as.factor(TotalScore), fill = as.factor(SpEd))) +
-  geom_bar(position = "fill") + 
-  scale_y_continuous(labels = scales::percent) +
-  scale_fill_viridis_d(option = "mako", begin = 0.2, end = 0.8) + 
-  labs(title = "Probability of Rule Violations by Controlling Offense Type",
-       x = "Offense Type", 
-       y = "Percentage of Inmates",
-       fill = "Status") +
-  theme_minimal()
-
-sblist2[is.na(sblist2$TotalScore),]
+```{r,echo=F}
+table(sblist3$TotalScore)
 ```
 
+As seen above, the categories 7,9, and 10 are the most observed classes. Predictions like this usually occur when the model does not have a lot of good information, so it predicts the most common classes very often. In order to further investigate this, we would like to see what the AIC and residual deviance of the null model, a model with no predictors, is to see if our model truly is good or not.
 
-```{r, brant testing}
-tempy<- data.frame(
-  Education = sblist2$`Years of Education`,
-  TotalScore = sblist2$TotalScore,
-  offense_type = sblist2$offense_type,
-  DrinkAge = sblist2$DrinkAge,
-  SmokeAge = sblist2$SmokeAge
-  
-)
-model <- polr(as.factor(TotalScore) ~ Education + DrinkAge + SmokeAge, 
-              data = tempy, 
-              Hess = TRUE)
-
-brant(model)
+```{r,echo=F}
+cum_logit_model_null <- polr(TotalScore ~ 1, data = train_data, Hess = TRUE)
+summary(cum_logit_model_null)
 ```
 
+From this, it can be seen that the AIC's and residual deviances drop a very small amount. The AIC drops from 10481.84 to 10450.56 in going from the null model to the full model, and the residual deviance from 10465.84 to 10410.56. This is a very miniscule difference, suggesting our model does not explain much of the variation in the response. Because of this, we would like to test if different link functions may create a better fit.
 
-```{r, Multicollinearity Check}
-vif_model <- lm(
-  as.numeric(TotalScore) ~`Years of Education`+ SpEd+ `Born in the US`+ Children+ `Foster Home`+ Homeless+ Welfare+ `Public Housing`+ Father+ Mother+ Sibling+ SmokeAge+ DrinkAge,
-  data = sblist2
-)
-vif_df <- vif(vif_model) %>% 
-    as.data.frame() %>% 
-    rename(VIF = 1) %>%           
-    mutate(Variable = row.names(.)) %>% 
-    dplyr::select(Variable, VIF)         
+The probit link function attempt can be seen below:
 
-
-vif_df %>%
-    kable(
-        digits = 2, 
-        caption = "Multicollinearity Diagnostics: VIF Values",
-        booktabs = TRUE, 
-        linesep = "",
-        row.names = FALSE
-        
-    ) %>%
-    kable_styling(
-        bootstrap_options = c("striped", "hover", "condensed"),
-        full_width = FALSE,
-        position = "center"
-    ) %>%
-
-    column_spec(2, color = ifelse(vif_df$VIF > 5, "red", "black"), 
-                bold = ifelse(vif_df$VIF > 5, TRUE, FALSE))
-
-sub_data <- sblist2 %>% dplyr::select(`Years of Education`, SpEd, `Born in the US`, Children, `Foster Home`, Homeless, Welfare, `Public Housing`, Father, Mother, Sibling, SmokeAge, DrinkAge)
-cor_matrix <- cor(sub_data, use = "complete.obs")
-corrplot(cor_matrix, method = "color", addCoef.col = "black")
-
-#> vif_model1 <- lm(
-#+   as.numeric(TotalScore) ~`Foster Home` + Homeless + Welfare + `Public Housing`,
-#+   data = sblist2
-
-#vif_model2 <- lm(
-#  as.numeric(TotalScore) ~ Father + Mother + Sibling,
-#  data = sblist2)
-#vif(vif_model)
-
-
-
+```{r,echo=F}
+probit_model <- polr(TotalScore ~ as.factor(edu_group)+as.factor(Children) + 
+                        as.factor(`Foster Home`) + as.factor(Homeless) + 
+                        SmokeAge + DrinkAge + as.factor(Welfare) + as.factor(Mother) +
+                          as.factor(Father), data = train_data, method = "probit", Hess = TRUE)
+summary(probit_model)
 ```
+
+The results from the complementary log log link function can be seen below:
+
+```{r,echo=F}
+cloglog_model <- polr(TotalScore ~ as.factor(edu_group)+as.factor(Children) + 
+                        as.factor(`Foster Home`) + as.factor(Homeless) + 
+                        SmokeAge + DrinkAge + as.factor(Welfare) + as.factor(Mother) +
+                          as.factor(Father), data = train_data, method = "cloglog", Hess = TRUE)
+summary(cloglog_model)
+```
+
+As seen, these link functions do not help the fit much, if at all. The AIC's and residual deviances of the models just tested are all higher than those from the logit link function, but not by a significant margin.
+
+# Conclusion
+
+
+
+
+
+
+
+
 
 
